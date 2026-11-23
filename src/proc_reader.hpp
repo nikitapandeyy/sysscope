@@ -123,6 +123,12 @@ public:
     // Parse aggregate CPU times from /proc/stat stream.
     static bool parse_stat_cpu_stream(std::istream& is, SystemCpuTimes& out);
 
+    // Read full telemetry for all active processes in the proc root.
+    // Gracefully skips any process that vanishes mid-read (e.g. ENOENT).
+    // Computes memory percentage against /proc/meminfo and updates CPU%
+    // using the provided CpuTracker. Prunes exited processes from the tracker.
+    [[nodiscard]] std::vector<Process> read_all_processes(class CpuTracker& cpu_tracker) const;
+
 private:
     std::string proc_root_;
     mutable std::unordered_map<uid_t, std::string> user_cache_;

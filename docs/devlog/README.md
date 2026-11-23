@@ -13,4 +13,5 @@ Engineering log for **Mini Process Monitor (`minimon`)**. Every task is verified
 | [T2.4](007-status-cmdline-parser.md) | `/proc/[pid]/status` & `cmdline` parsers | 2026-11-23 | `67ecf7c` | Completed |
 | [T2.5](008-username-lookup.md) | Username lookup from UID with caching and fallback | 2026-11-23 | `e1ab660` | Completed |
 | [T2.6](009-system-parsers.md) | System memory (`/proc/meminfo`) & CPU (`/proc/stat`) parsers | 2026-11-23 | `e4c4bfb` | Completed |
-| [T2.7](010-cpu-tracker.md) | Two-sample CPU tracker & PID reuse detection | 2026-11-23 | `9e92f90` | Completed |
+| [T2.7](010-cpu-tracker.md) | Two-sample CPU tracker & PID reuse detection | 2026-11-23 | `a31f413` | Completed |
+| [T2.8](011-read-all-processes.md) | Unified process listing & vanished process handling | 2026-11-23 | `78dc8c1` | Completed |

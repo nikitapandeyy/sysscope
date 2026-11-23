@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "proc_reader.hpp"
+#include "cpu_tracker.hpp"
 
 TEST(ProcReaderTest, ConfigurableRoot) {
     minimon::ProcReader reader("/custom/proc/path");
@@ -302,4 +303,42 @@ TEST(SystemFixturesTest, ReadFromDiskFixtures) {
     ASSERT_TRUE(reader.read_system_cpu(cpu));
     EXPECT_EQ(cpu.total_time(), 10000u);
     EXPECT_EQ(cpu.active_time(), 1900u);
+}
+
+TEST(ProcFullScanTest, ReadAllProcessesFromFixture) {
+    std::string fixture_dir = std::string(TEST_FIXTURES_DIR) + "/proc_full";
+    minimon::ProcReader reader(fixture_dir);
+    minimon::CpuTracker tracker(100);
+
+    std::vector<minimon::Process> procs = reader.read_all_processes(tracker);
+
+    // Directory had 1, 2, 100, and 999 (where 999 vanished and has no stat file)
+    ASSERT_EQ(procs.size(), 3u);
+
+    // Verify Process 1 (systemd)
+    EXPECT_EQ(procs[0].pid, 1);
+    EXPECT_EQ(procs[0].name, "systemd");
+    EXPECT_EQ(procs[0].user, "root");
+    EXPECT_EQ(procs[0].rss_kb, 8192u);
+    EXPECT_DOUBLE_EQ(procs[0].mem_percent, (8192.0 / 16384000.0) * 100.0);
+    EXPECT_EQ(procs[0].cmdline, "/sbin/init");
+    EXPECT_DOUBLE_EQ(procs[0].cpu_percent, 0.0); // Initial sample
+
+    // Verify Process 2 (kthreadd - kernel thread)
+    EXPECT_EQ(procs[1].pid, 2);
+    EXPECT_EQ(procs[1].name, "kthreadd");
+    EXPECT_EQ(procs[1].user, "root");
+    EXPECT_EQ(procs[1].rss_kb, 0u);
+    EXPECT_DOUBLE_EQ(procs[1].mem_percent, 0.0);
+    EXPECT_EQ(procs[1].cmdline, "[kthreadd]"); // Bracketed fallback for empty cmdline
+
+    // Verify Process 100 (bash)
+    EXPECT_EQ(procs[2].pid, 100);
+    EXPECT_EQ(procs[2].name, "bash");
+    EXPECT_EQ(procs[2].rss_kb, 4096u);
+    EXPECT_DOUBLE_EQ(procs[2].mem_percent, (4096.0 / 16384000.0) * 100.0);
+    EXPECT_EQ(procs[2].cmdline, "/bin/bash");
+
+    // Verify that tracker has recorded 3 processes
+    EXPECT_EQ(tracker.tracked_count(), 3u);
 }

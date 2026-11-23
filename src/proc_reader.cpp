@@ -1,4 +1,5 @@
 #include "proc_reader.hpp"
+#include "cpu_tracker.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -337,6 +338,60 @@ bool ProcReader::read_system_cpu(SystemCpuTimes& out) const {
         return false;
     }
     return parse_stat_cpu_stream(file, out);
+}
+
+std::vector<Process> ProcReader::read_all_processes(CpuTracker& cpu_tracker) const {
+    std::vector<Process> processes;
+    std::vector<pid_t> pids = get_pids();
+
+    SystemMemory mem;
+    bool has_mem = read_meminfo(mem);
+    uint64_t total_ram_kb = has_mem ? mem.total_kb : 0;
+
+    std::vector<pid_t> successfully_read_pids;
+    successfully_read_pids.reserve(pids.size());
+
+    for (pid_t pid : pids) {
+        Process p;
+        p.pid = pid;
+
+        // 1. Read /proc/[pid]/stat
+        // If the process terminated before or during read, stat fails (ENOENT)
+        if (!read_stat(pid, p)) {
+            continue;
+        }
+
+        // 2. Read /proc/[pid]/status
+        // If status fails, process likely terminated mid-read
+        if (!read_status(pid, p)) {
+            continue;
+        }
+
+        // 3. Read /proc/[pid]/cmdline
+        // Even if cmdline is empty (kernel thread), read_cmdline returns true
+        static_cast<void>(read_cmdline(pid, p));
+        if (p.cmdline.empty()) {
+            p.cmdline = "[" + p.name + "]";
+        }
+
+        // 4. Calculate memory percent
+        if (total_ram_kb > 0 && p.rss_kb > 0) {
+            p.mem_percent = (static_cast<double>(p.rss_kb) / static_cast<double>(total_ram_kb)) * 100.0;
+        } else {
+            p.mem_percent = 0.0;
+        }
+
+        // 5. Calculate and update CPU%
+        cpu_tracker.update_process_cpu(p);
+
+        successfully_read_pids.push_back(pid);
+        processes.push_back(std::move(p));
+    }
+
+    // 6. Prune exited processes from history
+    cpu_tracker.prune_exited(successfully_read_pids);
+
+    return processes;
 }
 
 } // namespace minimon
