@@ -18,20 +18,57 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     )
 endif()
 
-# Core executable
+# Core library target containing the monitor's modules
+add_library(minimon_core STATIC
+    src/process.cpp
+    src/proc_reader.cpp
+    src/cpu_tracker.cpp
+)
+target_include_directories(minimon_core PUBLIC src)
+
+# Main CLI executable
 add_executable(minimon
     src/main.cpp
 )
-
-target_include_directories(minimon PRIVATE src)
+target_link_libraries(minimon PRIVATE minimon_core)
 
 # Milestone 1 experiment executable
 add_executable(read_stat_exp
     experiments/read_stat_exp.cpp
 )
 
-# Optional testing support (configured in Phase 2)
+# Automated testing with GoogleTest
 option(BUILD_TESTING "Build the testing tree" ON)
 if(BUILD_TESTING)
     enable_testing()
+
+    include(FetchContent)
+    cmake_policy(SET CMP0135 NEW)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    # Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    add_executable(minimon_tests
+        tests/test_trivial.cpp
+        tests/test_proc_reader.cpp
+        tests/test_cpu_tracker.cpp
+    )
+    target_link_libraries(minimon_tests PRIVATE
+        minimon_core
+        GTest::gtest_main
+    )
+    target_include_directories(minimon_tests PRIVATE src)
+    target_compile_definitions(minimon_tests PRIVATE
+        TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+    )
+
+    include(GoogleTest)
+    gtest_discover_tests(minimon_tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()

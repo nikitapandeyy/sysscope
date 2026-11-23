@@ -1,0 +1,397 @@
+#include "proc_reader.hpp"
+#include "cpu_tracker.hpp"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+#include <cctype>
+#include <pwd.h>
+#include <unistd.h>
+
+namespace minimon {
+
+ProcReader::ProcReader(std::string proc_root)
+    : proc_root_(std::move(proc_root)) {}
+
+std::vector<pid_t> ProcReader::get_pids() const {
+    std::vector<pid_t> pids;
+    std::error_code ec;
+
+    // Open directory iterator with error code to prevent throwing on missing or unreadable directories
+    std::filesystem::directory_iterator it(proc_root_, std::filesystem::directory_options::skip_permission_denied, ec);
+    if (ec) {
+        return pids;
+    }
+
+    for (const auto& entry : it) {
+        std::error_code status_ec;
+        // In Linux /proc, every process has a directory named after its numeric PID
+        if (!entry.is_directory(status_ec)) {
+            continue;
+        }
+
+        const std::string filename = entry.path().filename().string();
+        if (filename.empty()) {
+            continue;
+        }
+
+        // Verify that the directory name consists solely of digits '0'-'9'
+        bool is_numeric = std::all_of(filename.begin(), filename.end(), [](unsigned char c) {
+            return std::isdigit(c) != 0;
+        });
+
+        if (is_numeric) {
+            try {
+                auto pid = static_cast<pid_t>(std::stol(filename));
+                if (pid > 0) {
+                    pids.push_back(pid);
+                }
+            } catch (...) {
+                // Safely skip any value out of pid_t range
+            }
+        }
+    }
+
+    std::sort(pids.begin(), pids.end());
+    return pids;
+}
+
+bool ProcReader::parse_stat_string(const std::string& line, Process& out) {
+    // 1. The comm field is enclosed in parentheses: (comm)
+    // Because comm can contain spaces and parentheses (e.g. "(a b)", "((a) b (c))"),
+    // we locate the first '(' and the LAST ')' in the line.
+    size_t first_paren = line.find('(');
+    size_t last_paren = line.rfind(')');
+
+    if (first_paren == std::string::npos || last_paren == std::string::npos || last_paren <= first_paren) {
+        return false;
+    }
+
+    // 2. Extract PID (before first '(')
+    try {
+        std::string pid_str = line.substr(0, first_paren);
+        out.pid = static_cast<pid_t>(std::stol(pid_str));
+    } catch (...) {
+        return false;
+    }
+
+    // 3. Extract comm (between first '(' and last ')')
+    out.name = line.substr(first_paren + 1, last_paren - (first_paren + 1));
+
+    // 4. Everything after last_paren + 1 consists of space-separated positional tokens
+    // starting with field 3 (state)
+    std::string rest = line.substr(last_paren + 1);
+    std::istringstream iss(rest);
+
+    // Field 3: state (%c)
+    if (!(iss >> out.state)) return false;
+
+    // Field 4: ppid (%d)
+    long ppid_val = 0;
+    if (!(iss >> ppid_val)) return false;
+    out.ppid = static_cast<pid_t>(ppid_val);
+
+    // Fields 5 through 13:
+    // 5: pgrp, 6: session, 7: tty_nr, 8: tpgid, 9: flags,
+    // 10: minflt, 11: cminflt, 12: majflt, 13: cmajflt
+    std::string dummy;
+    for (int i = 5; i <= 13; ++i) {
+        if (!(iss >> dummy)) return false;
+    }
+
+    // Field 14: utime (%lu)
+    if (!(iss >> out.utime)) return false;
+
+    // Field 15: stime (%lu)
+    if (!(iss >> out.stime)) return false;
+
+    // Fields 16 through 19:
+    // 16: cutime, 17: cstime, 18: priority, 19: nice
+    for (int i = 16; i <= 19; ++i) {
+        if (!(iss >> dummy)) return false;
+    }
+
+    // Field 20: num_threads (%ld)
+    if (!(iss >> out.threads)) return false;
+
+    // Field 21: itrealvalue
+    if (!(iss >> dummy)) return false;
+
+    // Field 22: starttime (%llu)
+    if (!(iss >> out.starttime)) return false;
+
+    return true;
+}
+
+bool ProcReader::read_stat(pid_t pid, Process& out) const {
+    std::string path = proc_root_ + "/" + std::to_string(pid) + "/stat";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        // Process may have terminated (ENOENT) or lacks permissions (EACCES)
+        return false;
+    }
+
+    std::string line;
+    if (!std::getline(file, line)) {
+        return false;
+    }
+
+    return parse_stat_string(line, out);
+}
+
+bool ProcReader::parse_status_stream(std::istream& is, Process& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        if (line.rfind("Name:", 0) == 0) {
+            // Name:    bash
+            size_t pos = line.find_first_not_of(" \t", 5);
+            if (pos != std::string::npos && out.name.empty()) {
+                out.name = line.substr(pos);
+            }
+        } else if (line.rfind("State:", 0) == 0) {
+            // State:   S (sleeping)
+            size_t pos = line.find_first_not_of(" \t", 6);
+            if (pos != std::string::npos && !line.empty()) {
+                out.state = line[pos];
+            }
+        } else if (line.rfind("Uid:", 0) == 0) {
+            // Uid: 1000    1000    1000    1000
+            std::istringstream uid_iss(line.substr(4));
+            long real_uid = 0;
+            if (uid_iss >> real_uid) {
+                out.uid = static_cast<uid_t>(real_uid);
+            }
+        } else if (line.rfind("VmSize:", 0) == 0) {
+            // VmSize:     15808 kB
+            std::istringstream sz_iss(line.substr(7));
+            uint64_t sz = 0;
+            if (sz_iss >> sz) {
+                out.vm_size_kb = sz;
+            }
+        } else if (line.rfind("VmRSS:", 0) == 0) {
+            // VmRSS:       4840 kB
+            std::istringstream rss_iss(line.substr(6));
+            uint64_t rss = 0;
+            if (rss_iss >> rss) {
+                out.rss_kb = rss;
+            }
+        } else if (line.rfind("Threads:", 0) == 0) {
+            // Threads: 1
+            std::istringstream th_iss(line.substr(8));
+            long th = 1;
+            if (th_iss >> th) {
+                out.threads = th;
+            }
+        }
+    }
+    return true;
+}
+
+std::string ProcReader::get_username(uid_t uid) const {
+    auto it = user_cache_.find(uid);
+    if (it != user_cache_.end()) {
+        return it->second;
+    }
+
+    std::string username;
+    struct passwd pwd;
+    struct passwd* result = nullptr;
+    char buf[1024];
+
+    // getpwuid_r is the reentrant POSIX call avoiding static buffer races
+    int ret = getpwuid_r(uid, &pwd, buf, sizeof(buf), &result);
+    if (ret == 0 && result != nullptr && result->pw_name != nullptr) {
+        username = result->pw_name;
+    } else {
+        // Fallback to numeric UID string if user not found in /etc/passwd
+        username = std::to_string(uid);
+    }
+
+    user_cache_[uid] = username;
+    return username;
+}
+
+void ProcReader::clear_user_cache() const {
+    user_cache_.clear();
+}
+
+bool ProcReader::read_status(pid_t pid, Process& out) const {
+    std::string path = proc_root_ + "/" + std::to_string(pid) + "/status";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    bool ok = parse_status_stream(file, out);
+    if (ok) {
+        out.user = get_username(out.uid);
+    }
+    return ok;
+}
+
+std::string ProcReader::parse_cmdline_buffer(const char* buf, size_t length) {
+    if (!buf || length == 0) {
+        return "";
+    }
+
+    std::string result;
+    result.reserve(length);
+
+    for (size_t i = 0; i < length; ++i) {
+        char c = buf[i];
+        if (c == '\0') {
+            // Replace NUL byte with a single space separator
+            if (i + 1 < length && !result.empty() && result.back() != ' ') {
+                result.push_back(' ');
+            }
+        } else {
+            result.push_back(c);
+        }
+    }
+
+    // Trim trailing space if any
+    while (!result.empty() && result.back() == ' ') {
+        result.pop_back();
+    }
+
+    return result;
+}
+
+bool ProcReader::read_cmdline(pid_t pid, Process& out) const {
+    std::string path = proc_root_ + "/" + std::to_string(pid) + "/cmdline";
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        out.cmdline = "";
+        return false;
+    }
+
+    std::vector<char> buffer(4096);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    std::streamsize bytes_read = file.gcount();
+
+    if (bytes_read > 0) {
+        out.cmdline = parse_cmdline_buffer(buffer.data(), static_cast<size_t>(bytes_read));
+    } else {
+        out.cmdline = "";
+    }
+
+    return true;
+}
+
+bool ProcReader::parse_meminfo_stream(std::istream& is, SystemMemory& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        if (line.rfind("MemTotal:", 0) == 0) {
+            std::istringstream iss(line.substr(9));
+            iss >> out.total_kb;
+        } else if (line.rfind("MemFree:", 0) == 0) {
+            std::istringstream iss(line.substr(8));
+            iss >> out.free_kb;
+        } else if (line.rfind("MemAvailable:", 0) == 0) {
+            std::istringstream iss(line.substr(13));
+            iss >> out.available_kb;
+        } else if (line.rfind("Buffers:", 0) == 0) {
+            std::istringstream iss(line.substr(8));
+            iss >> out.buffers_kb;
+        } else if (line.rfind("Cached:", 0) == 0) {
+            std::istringstream iss(line.substr(7));
+            iss >> out.cached_kb;
+        } else if (line.rfind("SwapTotal:", 0) == 0) {
+            std::istringstream iss(line.substr(10));
+            iss >> out.swap_total_kb;
+        } else if (line.rfind("SwapFree:", 0) == 0) {
+            std::istringstream iss(line.substr(9));
+            iss >> out.swap_free_kb;
+        }
+    }
+    return out.total_kb > 0;
+}
+
+bool ProcReader::read_meminfo(SystemMemory& out) const {
+    std::string path = proc_root_ + "/meminfo";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    return parse_meminfo_stream(file, out);
+}
+
+bool ProcReader::parse_stat_cpu_stream(std::istream& is, SystemCpuTimes& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        // The first line "cpu  " contains aggregate metrics across all cores
+        if (line.rfind("cpu ", 0) == 0) {
+            std::istringstream iss(line.substr(4));
+            if (iss >> out.user >> out.nice >> out.system >> out.idle) {
+                iss >> out.iowait >> out.irq >> out.softirq >> out.steal >> out.guest >> out.guest_nice;
+                return true;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+bool ProcReader::read_system_cpu(SystemCpuTimes& out) const {
+    std::string path = proc_root_ + "/stat";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    return parse_stat_cpu_stream(file, out);
+}
+
+std::vector<Process> ProcReader::read_all_processes(CpuTracker& cpu_tracker) const {
+    std::vector<Process> processes;
+    std::vector<pid_t> pids = get_pids();
+
+    SystemMemory mem;
+    bool has_mem = read_meminfo(mem);
+    uint64_t total_ram_kb = has_mem ? mem.total_kb : 0;
+
+    std::vector<pid_t> successfully_read_pids;
+    successfully_read_pids.reserve(pids.size());
+
+    for (pid_t pid : pids) {
+        Process p;
+        p.pid = pid;
+
+        // 1. Read /proc/[pid]/stat
+        // If the process terminated before or during read, stat fails (ENOENT)
+        if (!read_stat(pid, p)) {
+            continue;
+        }
+
+        // 2. Read /proc/[pid]/status
+        // If status fails, process likely terminated mid-read
+        if (!read_status(pid, p)) {
+            continue;
+        }
+
+        // 3. Read /proc/[pid]/cmdline
+        // Even if cmdline is empty (kernel thread), read_cmdline returns true
+        static_cast<void>(read_cmdline(pid, p));
+        if (p.cmdline.empty()) {
+            p.cmdline = "[" + p.name + "]";
+        }
+
+        // 4. Calculate memory percent
+        if (total_ram_kb > 0 && p.rss_kb > 0) {
+            p.mem_percent = (static_cast<double>(p.rss_kb) / static_cast<double>(total_ram_kb)) * 100.0;
+        } else {
+            p.mem_percent = 0.0;
+        }
+
+        // 5. Calculate and update CPU%
+        cpu_tracker.update_process_cpu(p);
+
+        successfully_read_pids.push_back(pid);
+        processes.push_back(std::move(p));
+    }
+
+    // 6. Prune exited processes from history
+    cpu_tracker.prune_exited(successfully_read_pids);
+
+    return processes;
+}
+
+} // namespace minimon
