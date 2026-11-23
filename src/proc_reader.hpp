@@ -32,6 +32,20 @@ public:
     // Handles tricky comm names containing spaces and nested parentheses.
     static bool parse_stat_string(const std::string& line, Process& out);
 
+    // Read and parse /proc/[pid]/status into the provided Process object.
+    // Extracts: Name, State, Uid, VmSize, VmRSS, Threads.
+    [[nodiscard]] bool read_status(pid_t pid, Process& out) const;
+
+    // Parse status key-value lines from an input stream.
+    static bool parse_status_stream(std::istream& is, Process& out);
+
+    // Read and parse /proc/[pid]/cmdline into out.cmdline.
+    // Converts internal NUL separators to spaces.
+    [[nodiscard]] bool read_cmdline(pid_t pid, Process& out) const;
+
+    // Parse raw NUL-separated cmdline buffer into space-separated string.
+    static std::string parse_cmdline_buffer(const char* buf, size_t length);
+
 private:
     std::string proc_root_;
 };

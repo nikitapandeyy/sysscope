@@ -136,4 +136,110 @@ bool ProcReader::read_stat(pid_t pid, Process& out) const {
     return parse_stat_string(line, out);
 }
 
+bool ProcReader::parse_status_stream(std::istream& is, Process& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        if (line.rfind("Name:", 0) == 0) {
+            // Name:    bash
+            size_t pos = line.find_first_not_of(" \t", 5);
+            if (pos != std::string::npos && out.name.empty()) {
+                out.name = line.substr(pos);
+            }
+        } else if (line.rfind("State:", 0) == 0) {
+            // State:   S (sleeping)
+            size_t pos = line.find_first_not_of(" \t", 6);
+            if (pos != std::string::npos && !line.empty()) {
+                out.state = line[pos];
+            }
+        } else if (line.rfind("Uid:", 0) == 0) {
+            // Uid: 1000    1000    1000    1000
+            std::istringstream uid_iss(line.substr(4));
+            long real_uid = 0;
+            if (uid_iss >> real_uid) {
+                out.uid = static_cast<uid_t>(real_uid);
+            }
+        } else if (line.rfind("VmSize:", 0) == 0) {
+            // VmSize:     15808 kB
+            std::istringstream sz_iss(line.substr(7));
+            uint64_t sz = 0;
+            if (sz_iss >> sz) {
+                out.vm_size_kb = sz;
+            }
+        } else if (line.rfind("VmRSS:", 0) == 0) {
+            // VmRSS:       4840 kB
+            std::istringstream rss_iss(line.substr(6));
+            uint64_t rss = 0;
+            if (rss_iss >> rss) {
+                out.rss_kb = rss;
+            }
+        } else if (line.rfind("Threads:", 0) == 0) {
+            // Threads: 1
+            std::istringstream th_iss(line.substr(8));
+            long th = 1;
+            if (th_iss >> th) {
+                out.threads = th;
+            }
+        }
+    }
+    return true;
+}
+
+bool ProcReader::read_status(pid_t pid, Process& out) const {
+    std::string path = proc_root_ + "/" + std::to_string(pid) + "/status";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    return parse_status_stream(file, out);
+}
+
+std::string ProcReader::parse_cmdline_buffer(const char* buf, size_t length) {
+    if (!buf || length == 0) {
+        return "";
+    }
+
+    std::string result;
+    result.reserve(length);
+
+    for (size_t i = 0; i < length; ++i) {
+        char c = buf[i];
+        if (c == '\0') {
+            // Replace NUL byte with a single space separator
+            if (i + 1 < length && !result.empty() && result.back() != ' ') {
+                result.push_back(' ');
+            }
+        } else {
+            result.push_back(c);
+        }
+    }
+
+    // Trim trailing space if any
+    while (!result.empty() && result.back() == ' ') {
+        result.pop_back();
+    }
+
+    return result;
+}
+
+bool ProcReader::read_cmdline(pid_t pid, Process& out) const {
+    std::string path = proc_root_ + "/" + std::to_string(pid) + "/cmdline";
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        out.cmdline = "";
+        return false;
+    }
+
+    std::vector<char> buffer(4096);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    std::streamsize bytes_read = file.gcount();
+
+    if (bytes_read > 0) {
+        out.cmdline = parse_cmdline_buffer(buffer.data(), static_cast<size_t>(bytes_read));
+    } else {
+        out.cmdline = "";
+    }
+
+    return true;
+}
+
 } // namespace minimon
