@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    if (config.once) {
+    if (config.once || config.json) {
         minimon::run_single_shot(config, std::cout);
     } else {
         minimon::run_live_loop(config, std::cout);

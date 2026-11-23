@@ -144,3 +144,61 @@ TEST(DisplayLiveTest, RunLiveLoopExitsOnStop) {
 
     EXPECT_NE(out.find("\033[2J\033[H"), std::string::npos);
 }
+
+TEST(DisplayTest, JsonEscape) {
+    EXPECT_EQ(minimon::json_escape("hello"), "hello");
+    EXPECT_EQ(minimon::json_escape("hello \"world\""), "hello \\\"world\\\"");
+    EXPECT_EQ(minimon::json_escape("line1\nline2\ttab"), "line1\\nline2\\ttab");
+    EXPECT_EQ(minimon::json_escape("path\\to\\bin"), "path\\\\to\\\\bin");
+}
+
+TEST(DisplayTest, RenderJsonOutput) {
+    std::vector<minimon::Process> procs;
+
+    minimon::Process p1;
+    p1.pid = 1;
+    p1.ppid = 0;
+    p1.name = "systemd";
+    p1.user = "root";
+    p1.uid = 0;
+    p1.state = 'S';
+    p1.cpu_percent = 0.5;
+    p1.rss_kb = 8192;
+    p1.vm_size_kb = 16384;
+    p1.mem_percent = 0.05;
+    p1.threads = 1;
+    p1.cmdline = "/sbin/init splash";
+    procs.push_back(p1);
+
+    minimon::SystemMemory mem;
+    mem.total_kb = 16384000;
+    mem.free_kb = 8000000;
+    mem.available_kb = 12000000;
+    auto summary = minimon::make_summary(procs, mem);
+
+    std::string json = minimon::render_json(procs, summary, 0);
+
+    EXPECT_NE(json.find("\"schema_version\": \"1.0\""), std::string::npos);
+    EXPECT_NE(json.find("\"system\": {"), std::string::npos);
+    EXPECT_NE(json.find("\"total\": 1"), std::string::npos);
+    EXPECT_NE(json.find("\"processes\": ["), std::string::npos);
+    EXPECT_NE(json.find("\"pid\": 1"), std::string::npos);
+    EXPECT_NE(json.find("\"name\": \"systemd\""), std::string::npos);
+    EXPECT_NE(json.find("\"cmdline\": \"/sbin/init splash\""), std::string::npos);
+}
+
+TEST(DisplayLiveTest, RunSingleShotJsonOnFixture) {
+    minimon::CliConfig config;
+    config.once = true;
+    config.json = true;
+    config.proc_root = std::string(TEST_FIXTURES_DIR) + "/proc_full";
+
+    std::ostringstream oss;
+    minimon::run_single_shot(config, oss);
+    std::string out = oss.str();
+
+    EXPECT_NE(out.find("\"schema_version\": \"1.0\""), std::string::npos);
+    EXPECT_NE(out.find("\"pid\": 1"), std::string::npos);
+    EXPECT_NE(out.find("\"cmdline\": \"/sbin/init\""), std::string::npos);
+    EXPECT_NE(out.find("\"name\": \"kthreadd\""), std::string::npos);
+}

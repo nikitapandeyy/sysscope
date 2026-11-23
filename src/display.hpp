@@ -39,6 +39,16 @@ void get_system_loadavg(double& l1, double& l5, double& l15) noexcept;
 // Format memory size in human-readable units (kB, MB, GB).
 [[nodiscard]] std::string format_memory(uint64_t kb);
 
+// Escape a string to ensure valid JSON representation (quotes, backslashes, control characters).
+[[nodiscard]] std::string json_escape(std::string_view str);
+
+// Serialize system summary and process table into structured JSON.
+[[nodiscard]] std::string render_json(
+    const std::vector<Process>& procs,
+    const SystemSummary& summary,
+    size_t max_rows = 0
+);
+
 // Render the formatted header banner and process table to an output stream.
 void render_table(
     std::ostream& os,

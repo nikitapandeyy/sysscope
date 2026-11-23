@@ -136,6 +136,106 @@ std::string format_memory(uint64_t kb) {
     return oss.str();
 }
 
+std::string json_escape(std::string_view str) {
+    std::string out;
+    out.reserve(str.size() + 16);
+    for (char c : str) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char hex_buf[8];
+                    std::snprintf(hex_buf, sizeof(hex_buf), "\\u%04x", static_cast<unsigned int>(static_cast<unsigned char>(c)));
+                    out += hex_buf;
+                } else {
+                    out += c;
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+std::string render_json(
+    const std::vector<Process>& procs,
+    const SystemSummary& summary,
+    size_t max_rows
+) {
+    std::ostringstream oss;
+    oss << "{\n";
+    oss << "  \"schema_version\": \"1.0\",\n";
+
+    // System summary block
+    oss << "  \"system\": {\n";
+    oss << "    \"tasks\": {\n";
+    oss << "      \"total\": " << summary.total_tasks << ",\n";
+    oss << "      \"running\": " << summary.running_tasks << ",\n";
+    oss << "      \"sleeping\": " << summary.sleeping_tasks << ",\n";
+    oss << "      \"zombie\": " << summary.zombie_tasks << ",\n";
+    oss << "      \"stopped\": " << summary.stopped_tasks << "\n";
+    oss << "    },\n";
+
+    oss << "    \"memory\": {\n";
+    oss << "      \"total_kb\": " << summary.memory.total_kb << ",\n";
+    oss << "      \"used_kb\": " << summary.memory.used_kb() << ",\n";
+    oss << "      \"free_kb\": " << summary.memory.free_kb << ",\n";
+    oss << "      \"available_kb\": " << summary.memory.available_kb << ",\n";
+    oss << "      \"swap_total_kb\": " << summary.memory.swap_total_kb << ",\n";
+    uint64_t swap_used = (summary.memory.swap_total_kb >= summary.memory.swap_free_kb) ?
+                         (summary.memory.swap_total_kb - summary.memory.swap_free_kb) : 0;
+    oss << "      \"swap_used_kb\": " << swap_used << ",\n";
+    oss << "      \"used_percent\": " << std::fixed << std::setprecision(2) << summary.memory.used_percent() << "\n";
+    oss << "    },\n";
+
+    oss << "    \"loadavg\": ["
+        << std::fixed << std::setprecision(2)
+        << summary.load_1m << ", "
+        << summary.load_5m << ", "
+        << summary.load_15m << "]\n";
+    oss << "  },\n";
+
+    // Process list block
+    oss << "  \"processes\": [\n";
+    size_t count = 0;
+    for (size_t i = 0; i < procs.size(); ++i) {
+        if (max_rows > 0 && count >= max_rows) {
+            break;
+        }
+
+        const auto& p = procs[i];
+        if (count > 0) {
+            oss << ",\n";
+        }
+
+        oss << "    {\n";
+        oss << "      \"pid\": " << p.pid << ",\n";
+        oss << "      \"ppid\": " << p.ppid << ",\n";
+        oss << "      \"name\": \"" << json_escape(p.name) << "\",\n";
+        oss << "      \"state\": \"" << p.state << "\",\n";
+        oss << "      \"user\": \"" << json_escape(p.user) << "\",\n";
+        oss << "      \"uid\": " << p.uid << ",\n";
+        oss << "      \"cpu_percent\": " << std::fixed << std::setprecision(1) << p.cpu_percent << ",\n";
+        oss << "      \"rss_kb\": " << p.rss_kb << ",\n";
+        oss << "      \"vm_size_kb\": " << p.vm_size_kb << ",\n";
+        oss << "      \"mem_percent\": " << std::fixed << std::setprecision(2) << p.mem_percent << ",\n";
+        oss << "      \"threads\": " << p.threads << ",\n";
+        oss << "      \"cmdline\": \"" << json_escape(p.cmdline) << "\"\n";
+        oss << "    }";
+
+        count++;
+    }
+    oss << "\n  ]\n";
+    oss << "}\n";
+
+    return oss.str();
+}
+
 void render_table(
     std::ostream& os,
     const std::vector<Process>& procs,
@@ -236,9 +336,13 @@ void run_single_shot(const CliConfig& config, std::ostream& os) {
     SystemMemory mem;
     static_cast<void>(reader.read_meminfo(mem));
 
-    // Render table
+    // Render table or JSON
     auto summary = make_summary(procs, mem);
-    render_table(os, filtered, summary, config.top_n);
+    if (config.json) {
+        os << render_json(filtered, summary, config.top_n);
+    } else {
+        render_table(os, filtered, summary, config.top_n);
+    }
 }
 
 void run_live_loop(const CliConfig& config, std::ostream& os) {
