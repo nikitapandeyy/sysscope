@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <sys/types.h>
+#include "process.hpp"
 
 namespace minimon {
 
@@ -21,6 +22,15 @@ public:
     // Enumerate all active Process IDs by listing all purely numeric
     // subdirectories within the proc root directory.
     [[nodiscard]] std::vector<pid_t> get_pids() const;
+
+    // Read and parse /proc/[pid]/stat into the provided Process object.
+    // Returns true on success; returns false if the file cannot be opened
+    // (e.g. process terminated: ENOENT) or is malformed.
+    [[nodiscard]] bool read_stat(pid_t pid, Process& out) const;
+
+    // Parse a raw single-line /proc/[pid]/stat text string.
+    // Handles tricky comm names containing spaces and nested parentheses.
+    static bool parse_stat_string(const std::string& line, Process& out);
 
 private:
     std::string proc_root_;
