@@ -21,6 +21,7 @@ endif()
 # Core library target containing the monitor's modules
 add_library(minimon_core STATIC
     src/process.cpp
+    src/proc_reader.cpp
 )
 target_include_directories(minimon_core PUBLIC src)
 
@@ -53,13 +54,19 @@ if(BUILD_TESTING)
 
     add_executable(minimon_tests
         tests/test_trivial.cpp
+        tests/test_proc_reader.cpp
     )
     target_link_libraries(minimon_tests PRIVATE
         minimon_core
         GTest::gtest_main
     )
     target_include_directories(minimon_tests PRIVATE src)
+    target_compile_definitions(minimon_tests PRIVATE
+        TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+    )
 
     include(GoogleTest)
-    gtest_discover_tests(minimon_tests)
+    gtest_discover_tests(minimon_tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()
