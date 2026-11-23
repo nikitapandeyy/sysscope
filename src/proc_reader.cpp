@@ -276,4 +276,67 @@ bool ProcReader::read_cmdline(pid_t pid, Process& out) const {
     return true;
 }
 
+bool ProcReader::parse_meminfo_stream(std::istream& is, SystemMemory& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        if (line.rfind("MemTotal:", 0) == 0) {
+            std::istringstream iss(line.substr(9));
+            iss >> out.total_kb;
+        } else if (line.rfind("MemFree:", 0) == 0) {
+            std::istringstream iss(line.substr(8));
+            iss >> out.free_kb;
+        } else if (line.rfind("MemAvailable:", 0) == 0) {
+            std::istringstream iss(line.substr(13));
+            iss >> out.available_kb;
+        } else if (line.rfind("Buffers:", 0) == 0) {
+            std::istringstream iss(line.substr(8));
+            iss >> out.buffers_kb;
+        } else if (line.rfind("Cached:", 0) == 0) {
+            std::istringstream iss(line.substr(7));
+            iss >> out.cached_kb;
+        } else if (line.rfind("SwapTotal:", 0) == 0) {
+            std::istringstream iss(line.substr(10));
+            iss >> out.swap_total_kb;
+        } else if (line.rfind("SwapFree:", 0) == 0) {
+            std::istringstream iss(line.substr(9));
+            iss >> out.swap_free_kb;
+        }
+    }
+    return out.total_kb > 0;
+}
+
+bool ProcReader::read_meminfo(SystemMemory& out) const {
+    std::string path = proc_root_ + "/meminfo";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    return parse_meminfo_stream(file, out);
+}
+
+bool ProcReader::parse_stat_cpu_stream(std::istream& is, SystemCpuTimes& out) {
+    std::string line;
+    while (std::getline(is, line)) {
+        // The first line "cpu  " contains aggregate metrics across all cores
+        if (line.rfind("cpu ", 0) == 0) {
+            std::istringstream iss(line.substr(4));
+            if (iss >> out.user >> out.nice >> out.system >> out.idle) {
+                iss >> out.iowait >> out.irq >> out.softirq >> out.steal >> out.guest >> out.guest_nice;
+                return true;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+bool ProcReader::read_system_cpu(SystemCpuTimes& out) const {
+    std::string path = proc_root_ + "/stat";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    return parse_stat_cpu_stream(file, out);
+}
+
 } // namespace minimon

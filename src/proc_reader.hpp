@@ -8,6 +8,63 @@
 
 namespace minimon {
 
+// System-wide memory statistics extracted from /proc/meminfo.
+struct SystemMemory {
+    uint64_t total_kb{0};
+    uint64_t free_kb{0};
+    uint64_t available_kb{0};
+    uint64_t buffers_kb{0};
+    uint64_t cached_kb{0};
+    uint64_t swap_total_kb{0};
+    uint64_t swap_free_kb{0};
+
+    [[nodiscard]] uint64_t used_kb() const noexcept {
+        if (available_kb > 0 && total_kb >= available_kb) {
+            return total_kb - available_kb;
+        }
+        uint64_t non_used = free_kb + buffers_kb + cached_kb;
+        return total_kb >= non_used ? total_kb - non_used : 0;
+    }
+
+    [[nodiscard]] double used_percent() const noexcept {
+        return total_kb > 0 ? (static_cast<double>(used_kb()) / static_cast<double>(total_kb)) * 100.0 : 0.0;
+    }
+
+    [[nodiscard]] double total_mb() const noexcept {
+        return static_cast<double>(total_kb) / 1024.0;
+    }
+
+    [[nodiscard]] double used_mb() const noexcept {
+        return static_cast<double>(used_kb()) / 1024.0;
+    }
+};
+
+// System-wide aggregate CPU times in jiffies extracted from the first line of /proc/stat.
+struct SystemCpuTimes {
+    unsigned long long user{0};
+    unsigned long long nice{0};
+    unsigned long long system{0};
+    unsigned long long idle{0};
+    unsigned long long iowait{0};
+    unsigned long long irq{0};
+    unsigned long long softirq{0};
+    unsigned long long steal{0};
+    unsigned long long guest{0};
+    unsigned long long guest_nice{0};
+
+    [[nodiscard]] unsigned long long total_time() const noexcept {
+        return user + nice + system + idle + iowait + irq + softirq + steal;
+    }
+
+    [[nodiscard]] unsigned long long idle_time() const noexcept {
+        return idle + iowait;
+    }
+
+    [[nodiscard]] unsigned long long active_time() const noexcept {
+        return total_time() >= idle_time() ? total_time() - idle_time() : 0;
+    }
+};
+
 // ProcReader parses Linux /proc virtual filesystem files.
 // It accepts a configurable root path (default "/proc") so that unit and
 // integration tests can inject mock directory fixtures.
@@ -53,6 +110,18 @@ public:
 
     // Parse raw NUL-separated cmdline buffer into space-separated string.
     static std::string parse_cmdline_buffer(const char* buf, size_t length);
+
+    // Read and parse /proc/meminfo for system memory statistics.
+    [[nodiscard]] bool read_meminfo(SystemMemory& out) const;
+
+    // Parse /proc/meminfo content from stream.
+    static bool parse_meminfo_stream(std::istream& is, SystemMemory& out);
+
+    // Read and parse aggregate CPU times from /proc/stat.
+    [[nodiscard]] bool read_system_cpu(SystemCpuTimes& out) const;
+
+    // Parse aggregate CPU times from /proc/stat stream.
+    static bool parse_stat_cpu_stream(std::istream& is, SystemCpuTimes& out);
 
 private:
     std::string proc_root_;

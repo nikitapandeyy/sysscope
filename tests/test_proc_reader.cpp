@@ -238,3 +238,68 @@ TEST(UserLookupTest, StatusIntegration) {
     EXPECT_EQ(p2.uid, 0u);
     EXPECT_EQ(p2.user, "root");
 }
+
+TEST(SystemMeminfoTest, ParseMeminfoStream) {
+    std::string content =
+        "MemTotal:       16384000 kB\n"
+        "MemFree:         4096000 kB\n"
+        "MemAvailable:   12288000 kB\n"
+        "Buffers:          512000 kB\n"
+        "Cached:          7680000 kB\n"
+        "SwapTotal:       2048000 kB\n"
+        "SwapFree:        1024000 kB\n";
+
+    std::istringstream iss(content);
+    minimon::SystemMemory mem;
+    ASSERT_TRUE(minimon::ProcReader::parse_meminfo_stream(iss, mem));
+    EXPECT_EQ(mem.total_kb, 16384000u);
+    EXPECT_EQ(mem.free_kb, 4096000u);
+    EXPECT_EQ(mem.available_kb, 12288000u);
+    // used = total - available = 16384000 - 12288000 = 4096000 kB
+    EXPECT_EQ(mem.used_kb(), 4096000u);
+    EXPECT_DOUBLE_EQ(mem.used_percent(), 25.0);
+    EXPECT_DOUBLE_EQ(mem.total_mb(), 16000.0);
+    EXPECT_DOUBLE_EQ(mem.used_mb(), 4000.0);
+    EXPECT_EQ(mem.swap_total_kb, 2048000u);
+    EXPECT_EQ(mem.swap_free_kb, 1024000u);
+}
+
+TEST(SystemCpuTest, ParseCpuStatStream) {
+    std::string content =
+        "cpu  1000 200 500 8000 100 50 50 100 0 0\n"
+        "cpu0 500 100 250 4000 50 25 25 50 0 0\n";
+
+    std::istringstream iss(content);
+    minimon::SystemCpuTimes cpu;
+    ASSERT_TRUE(minimon::ProcReader::parse_stat_cpu_stream(iss, cpu));
+    EXPECT_EQ(cpu.user, 1000u);
+    EXPECT_EQ(cpu.nice, 200u);
+    EXPECT_EQ(cpu.system, 500u);
+    EXPECT_EQ(cpu.idle, 8000u);
+    EXPECT_EQ(cpu.iowait, 100u);
+    EXPECT_EQ(cpu.irq, 50u);
+    EXPECT_EQ(cpu.softirq, 50u);
+    EXPECT_EQ(cpu.steal, 100u);
+    // total = 1000 + 200 + 500 + 8000 + 100 + 50 + 50 + 100 = 10000
+    EXPECT_EQ(cpu.total_time(), 10000u);
+    // idle = idle + iowait = 8000 + 100 = 8100
+    EXPECT_EQ(cpu.idle_time(), 8100u);
+    // active = 10000 - 8100 = 1900
+    EXPECT_EQ(cpu.active_time(), 1900u);
+}
+
+TEST(SystemFixturesTest, ReadFromDiskFixtures) {
+    std::string fixture_dir = std::string(TEST_FIXTURES_DIR) + "/proc_system";
+    minimon::ProcReader reader(fixture_dir);
+
+    minimon::SystemMemory mem;
+    ASSERT_TRUE(reader.read_meminfo(mem));
+    EXPECT_EQ(mem.total_kb, 16384000u);
+    EXPECT_EQ(mem.used_kb(), 4096000u);
+    EXPECT_DOUBLE_EQ(mem.used_percent(), 25.0);
+
+    minimon::SystemCpuTimes cpu;
+    ASSERT_TRUE(reader.read_system_cpu(cpu));
+    EXPECT_EQ(cpu.total_time(), 10000u);
+    EXPECT_EQ(cpu.active_time(), 1900u);
+}
