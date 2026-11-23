@@ -1,0 +1,43 @@
+# Build artifacts
+build/
+bin/
+lib/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+
+# Object and library files
+*.o
+*.obj
+*.so
+*.dylib
+*.a
+*.la
+*.lai
+*.dSYM/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing and coverage
+*.gcda
+*.gcno
+*.gcov
+coverage/
+coverage.info
+gmon.out
+
+# Valgrind & debugging dumps
+valgrind-out.txt
+vgcore.*
+core
+core.*
+
+# Temporary experiment outputs
+experiments/bin/
