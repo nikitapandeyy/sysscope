@@ -23,6 +23,7 @@ add_library(minimon_core STATIC
     src/process.cpp
     src/proc_reader.cpp
     src/cpu_tracker.cpp
+    src/filter.cpp
 )
 target_include_directories(minimon_core PUBLIC src)
 
@@ -57,6 +58,7 @@ if(BUILD_TESTING)
         tests/test_trivial.cpp
         tests/test_proc_reader.cpp
         tests/test_cpu_tracker.cpp
+        tests/test_filter.cpp
     )
     target_link_libraries(minimon_tests PRIVATE
         minimon_core
@@ -70,5 +72,7 @@ if(BUILD_TESTING)
     include(GoogleTest)
     gtest_discover_tests(minimon_tests
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        DISCOVERY_MODE PRE_TEST
+        DISCOVERY_TIMEOUT 30
     )
 endif()
