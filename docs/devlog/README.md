@@ -18,4 +18,5 @@ Engineering log for **Mini Process Monitor (`minimon`)**. Every task is verified
 | [T3.1](012-filter-module.md) | Search & filter module with multi-criteria support | 2026-11-23 | `e998334` | Completed |
 | [T3.2](013-sort-module.md) | Sorting module by CPU, memory, PID, and name | 2026-11-23 | `cc3eb88` | Completed |
 | [T3.3](014-table-renderer.md) | Terminal table renderer & system summary banner | 2026-11-23 | `aac4a58` | Completed |
-| [T3.4](015-cli-parser.md) | CLI argument parsing & help documentation | 2026-11-23 | `7c64da5` | Completed |
+| [T3.4](015-cli-parser.md) | CLI argument parsing & help documentation | 2026-11-23 | `e411178` | Completed |
+| [T3.5](016-live-refresh-mode.md) | Live refresh mode & signal handling | 2026-11-23 | `c1c8342` | Completed |

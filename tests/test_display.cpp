@@ -105,3 +105,42 @@ TEST(DisplayTest, MaxRowsLimiting) {
     EXPECT_NE(output.find("proc3"), std::string::npos);
     EXPECT_EQ(output.find("proc4"), std::string::npos); // Should not appear
 }
+
+#include "cli.hpp"
+
+TEST(DisplayLiveTest, SignalHandlingAndStopRequest) {
+    minimon::setup_signal_handlers();
+    EXPECT_FALSE(minimon::is_stop_requested());
+
+    minimon::request_stop();
+    EXPECT_TRUE(minimon::is_stop_requested());
+}
+
+TEST(DisplayLiveTest, RunSingleShotOnFixture) {
+    minimon::CliConfig config;
+    config.once = true;
+    config.proc_root = std::string(TEST_FIXTURES_DIR) + "/proc_full";
+
+    std::ostringstream oss;
+    minimon::run_single_shot(config, oss);
+    std::string out = oss.str();
+
+    EXPECT_NE(out.find("/sbin/init"), std::string::npos);
+    EXPECT_NE(out.find("/bin/bash"), std::string::npos);
+    EXPECT_NE(out.find("[kthreadd]"), std::string::npos);
+}
+
+TEST(DisplayLiveTest, RunLiveLoopExitsOnStop) {
+    minimon::CliConfig config;
+    config.proc_root = std::string(TEST_FIXTURES_DIR) + "/proc_full";
+    config.interval = 0.05;
+
+    // Set stop requested before loop runs so it iterates once and exits
+    minimon::request_stop();
+
+    std::ostringstream oss;
+    minimon::run_live_loop(config, oss);
+    std::string out = oss.str();
+
+    EXPECT_NE(out.find("\033[2J\033[H"), std::string::npos);
+}

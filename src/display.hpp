@@ -48,4 +48,20 @@ void render_table(
     size_t term_width = 0
 );
 
+// Install POSIX sigaction handlers for SIGINT and SIGTERM to enable clean shutdown.
+void setup_signal_handlers() noexcept;
+
+// Check whether shutdown has been requested (e.g. via Ctrl+C / SIGINT).
+[[nodiscard]] bool is_stop_requested() noexcept;
+
+// Request shutdown programmatically.
+void request_stop() noexcept;
+
+// Run a single-shot inspection pass and output to os.
+void run_single_shot(const struct CliConfig& config, std::ostream& os);
+
+// Run the interactive live monitoring loop updating every config.interval seconds.
+// Restores cursor and terminal state cleanly upon exit.
+void run_live_loop(const struct CliConfig& config, std::ostream& os);
+
 } // namespace minimon

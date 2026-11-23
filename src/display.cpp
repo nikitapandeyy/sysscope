@@ -1,12 +1,68 @@
 #include "display.hpp"
+#include "cli.hpp"
+#include "cpu_tracker.hpp"
+#include "filter.hpp"
 #include <iomanip>
 #include <sstream>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <cstdlib>
 #include <cctype>
+#include <csignal>
+#include <atomic>
+#include <thread>
+#include <chrono>
 
 namespace minimon {
+
+namespace {
+
+std::atomic<bool> g_stop_requested{false};
+
+void handle_signal(int /*sig*/) noexcept {
+    g_stop_requested.store(true, std::memory_order_relaxed);
+}
+
+// RAII Terminal guard to hide cursor on start and restore cursor on exit
+struct TerminalGuard {
+    std::ostream& os;
+    bool active{false};
+
+    explicit TerminalGuard(std::ostream& out, bool is_interactive)
+        : os(out), active(is_interactive) {
+        if (active) {
+            os << "\033[?25l"; // Hide cursor
+            os.flush();
+        }
+    }
+
+    ~TerminalGuard() {
+        if (active) {
+            os << "\033[?25h\033[0m\n"; // Show cursor and reset attributes
+            os.flush();
+        }
+    }
+};
+
+} // anonymous namespace
+
+void setup_signal_handlers() noexcept {
+    struct sigaction sa{};
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
+}
+
+bool is_stop_requested() noexcept {
+    return g_stop_requested.load(std::memory_order_relaxed);
+}
+
+void request_stop() noexcept {
+    g_stop_requested.store(true, std::memory_order_relaxed);
+}
 
 size_t get_terminal_width() noexcept {
     struct winsize ws{};
@@ -152,6 +208,72 @@ void render_table(
            << std::left  << cmd_str << "\n";
 
         count++;
+    }
+}
+
+void run_single_shot(const CliConfig& config, std::ostream& os) {
+    ProcReader reader(config.proc_root);
+    CpuTracker tracker;
+
+    // Take initial sample
+    static_cast<void>(reader.read_all_processes(tracker));
+
+    // If running with mock fixtures with 0 interval or non-standard root, skip sleep
+    if (config.proc_root == "/proc") {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    // Take measurement sample
+    auto procs = reader.read_all_processes(tracker);
+
+    // Apply filtering
+    auto filtered = apply_filter(procs, config.filter);
+
+    // Apply sorting
+    sort_processes(filtered, config.sort_field, config.sort_order);
+
+    // Read system memory
+    SystemMemory mem;
+    static_cast<void>(reader.read_meminfo(mem));
+
+    // Render table
+    auto summary = make_summary(procs, mem);
+    render_table(os, filtered, summary, config.top_n);
+}
+
+void run_live_loop(const CliConfig& config, std::ostream& os) {
+    setup_signal_handlers();
+    TerminalGuard guard(os, isatty(STDOUT_FILENO) != 0);
+
+    ProcReader reader(config.proc_root);
+    CpuTracker tracker;
+
+    // Clear screen once at startup
+    os << "\033[2J\033[H";
+    os.flush();
+
+    while (!is_stop_requested()) {
+        auto procs = reader.read_all_processes(tracker);
+        auto filtered = apply_filter(procs, config.filter);
+        sort_processes(filtered, config.sort_field, config.sort_order);
+
+        SystemMemory mem;
+        static_cast<void>(reader.read_meminfo(mem));
+        auto summary = make_summary(procs, mem);
+
+        // Move cursor to home position without clearing screen to avoid flicker
+        os << "\033[H";
+        render_table(os, filtered, summary, config.top_n);
+        os.flush();
+
+        // Responsive sleep in 50ms increments to exit immediately on SIGINT
+        auto sleep_total_ms = static_cast<int>(config.interval * 1000.0);
+        int elapsed_ms = 0;
+        while (elapsed_ms < sleep_total_ms && !is_stop_requested()) {
+            int step = std::min(50, sleep_total_ms - elapsed_ms);
+            std::this_thread::sleep_for(std::chrono::milliseconds(step));
+            elapsed_ms += step;
+        }
     }
 }
 
