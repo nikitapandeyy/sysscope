@@ -30,4 +30,28 @@ struct FilterOptions {
 // Filter a collection of processes, returning only those matching all specified criteria.
 [[nodiscard]] std::vector<Process> apply_filter(const std::vector<Process>& procs, const FilterOptions& opts);
 
+// Fields by which process lists can be sorted.
+enum class SortField {
+    Cpu,
+    Memory,
+    Pid,
+    Name
+};
+
+// Sort ordering direction.
+enum class SortOrder {
+    Descending,
+    Ascending
+};
+
+// Parse a string (e.g. "cpu", "mem", "pid", "name") into a SortField.
+[[nodiscard]] std::optional<SortField> parse_sort_field(std::string_view str) noexcept;
+
+// Sort processes in-place by the specified field and order.
+void sort_processes(
+    std::vector<Process>& procs,
+    SortField field = SortField::Cpu,
+    SortOrder order = SortOrder::Descending
+);
+
 } // namespace minimon

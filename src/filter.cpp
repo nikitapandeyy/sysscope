@@ -92,4 +92,56 @@ std::vector<Process> apply_filter(const std::vector<Process>& procs, const Filte
     return filtered;
 }
 
+std::optional<SortField> parse_sort_field(std::string_view str) noexcept {
+    if (case_insensitive_equals(str, "cpu")) {
+        return SortField::Cpu;
+    }
+    if (case_insensitive_equals(str, "mem") || case_insensitive_equals(str, "memory") || case_insensitive_equals(str, "rss")) {
+        return SortField::Memory;
+    }
+    if (case_insensitive_equals(str, "pid")) {
+        return SortField::Pid;
+    }
+    if (case_insensitive_equals(str, "name") || case_insensitive_equals(str, "comm")) {
+        return SortField::Name;
+    }
+    return std::nullopt;
+}
+
+void sort_processes(std::vector<Process>& procs, SortField field, SortOrder order) {
+    std::stable_sort(procs.begin(), procs.end(), [field, order](const Process& a, const Process& b) {
+        if (order == SortOrder::Ascending) {
+            switch (field) {
+                case SortField::Cpu:
+                    if (a.cpu_percent != b.cpu_percent) return a.cpu_percent < b.cpu_percent;
+                    return a.pid < b.pid;
+                case SortField::Memory:
+                    if (a.rss_kb != b.rss_kb) return a.rss_kb < b.rss_kb;
+                    return a.pid < b.pid;
+                case SortField::Pid:
+                    return a.pid < b.pid;
+                case SortField::Name:
+                    if (a.name != b.name) return a.name < b.name;
+                    return a.pid < b.pid;
+            }
+        } else {
+            // Descending order (standard top behavior)
+            switch (field) {
+                case SortField::Cpu:
+                    if (a.cpu_percent != b.cpu_percent) return a.cpu_percent > b.cpu_percent;
+                    return a.pid < b.pid;
+                case SortField::Memory:
+                    if (a.rss_kb != b.rss_kb) return a.rss_kb > b.rss_kb;
+                    return a.pid < b.pid;
+                case SortField::Pid:
+                    return a.pid > b.pid;
+                case SortField::Name:
+                    if (a.name != b.name) return a.name > b.name;
+                    return a.pid < b.pid;
+            }
+        }
+        return false;
+    });
+}
+
 } // namespace minimon

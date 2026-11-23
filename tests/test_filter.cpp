@@ -151,3 +151,80 @@ TEST_F(FilterTest, CombinedFilter) {
     ASSERT_EQ(res.size(), 1u);
     EXPECT_EQ(res[0].pid, 100);
 }
+
+TEST_F(FilterTest, ParseSortField) {
+    EXPECT_EQ(minimon::parse_sort_field("cpu"), minimon::SortField::Cpu);
+    EXPECT_EQ(minimon::parse_sort_field("CPU"), minimon::SortField::Cpu);
+    EXPECT_EQ(minimon::parse_sort_field("mem"), minimon::SortField::Memory);
+    EXPECT_EQ(minimon::parse_sort_field("memory"), minimon::SortField::Memory);
+    EXPECT_EQ(minimon::parse_sort_field("rss"), minimon::SortField::Memory);
+    EXPECT_EQ(minimon::parse_sort_field("pid"), minimon::SortField::Pid);
+    EXPECT_EQ(minimon::parse_sort_field("name"), minimon::SortField::Name);
+    EXPECT_EQ(minimon::parse_sort_field("comm"), minimon::SortField::Name);
+    EXPECT_FALSE(minimon::parse_sort_field("unknown").has_value());
+}
+
+TEST_F(FilterTest, SortByCpuDescending) {
+    auto sorted = procs;
+    minimon::sort_processes(sorted, minimon::SortField::Cpu, minimon::SortOrder::Descending);
+    ASSERT_EQ(sorted.size(), 4u);
+    EXPECT_EQ(sorted[0].pid, 200); // 35.5%
+    EXPECT_EQ(sorted[1].pid, 100); // 2.0%
+    EXPECT_EQ(sorted[2].pid, 1);   // 0.5%
+    EXPECT_EQ(sorted[3].pid, 300); // 0.0%
+}
+
+TEST_F(FilterTest, SortByCpuAscending) {
+    auto sorted = procs;
+    minimon::sort_processes(sorted, minimon::SortField::Cpu, minimon::SortOrder::Ascending);
+    ASSERT_EQ(sorted.size(), 4u);
+    EXPECT_EQ(sorted[0].pid, 300); // 0.0%
+    EXPECT_EQ(sorted[1].pid, 1);   // 0.5%
+    EXPECT_EQ(sorted[2].pid, 100); // 2.0%
+    EXPECT_EQ(sorted[3].pid, 200); // 35.5%
+}
+
+TEST_F(FilterTest, SortByMemoryDescending) {
+    auto sorted = procs;
+    minimon::sort_processes(sorted, minimon::SortField::Memory, minimon::SortOrder::Descending);
+    ASSERT_EQ(sorted.size(), 4u);
+    EXPECT_EQ(sorted[0].pid, 200); // 512 MB
+    EXPECT_EQ(sorted[1].pid, 100); // 50 MB
+    EXPECT_EQ(sorted[2].pid, 1);   // 10 MB
+    EXPECT_EQ(sorted[3].pid, 300); // 0 MB
+}
+
+TEST_F(FilterTest, SortByMemoryAscending) {
+    auto sorted = procs;
+    minimon::sort_processes(sorted, minimon::SortField::Memory, minimon::SortOrder::Ascending);
+    ASSERT_EQ(sorted.size(), 4u);
+    EXPECT_EQ(sorted[0].pid, 300); // 0 MB
+    EXPECT_EQ(sorted[1].pid, 1);   // 10 MB
+    EXPECT_EQ(sorted[2].pid, 100); // 50 MB
+    EXPECT_EQ(sorted[3].pid, 200); // 512 MB
+}
+
+TEST_F(FilterTest, SortByPidAscendingAndDescending) {
+    auto asc = procs;
+    minimon::sort_processes(asc, minimon::SortField::Pid, minimon::SortOrder::Ascending);
+    EXPECT_EQ(asc[0].pid, 1);
+    EXPECT_EQ(asc[1].pid, 100);
+    EXPECT_EQ(asc[2].pid, 200);
+    EXPECT_EQ(asc[3].pid, 300);
+
+    auto desc = procs;
+    minimon::sort_processes(desc, minimon::SortField::Pid, minimon::SortOrder::Descending);
+    EXPECT_EQ(desc[0].pid, 300);
+    EXPECT_EQ(desc[1].pid, 200);
+    EXPECT_EQ(desc[2].pid, 100);
+    EXPECT_EQ(desc[3].pid, 1);
+}
+
+TEST_F(FilterTest, SortByNameAscending) {
+    auto sorted = procs;
+    minimon::sort_processes(sorted, minimon::SortField::Name, minimon::SortOrder::Ascending);
+    EXPECT_EQ(sorted[0].name, "bash");
+    EXPECT_EQ(sorted[1].name, "chrome");
+    EXPECT_EQ(sorted[2].name, "systemd");
+    EXPECT_EQ(sorted[3].name, "zombie_proc");
+}
