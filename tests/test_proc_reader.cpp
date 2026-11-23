@@ -200,3 +200,41 @@ TEST(ProcStatusCmdlineTest, ReadFromFixtures) {
     ASSERT_TRUE(reader.read_cmdline(2, p2));
     EXPECT_EQ(p2.cmdline, "");
 }
+
+TEST(UserLookupTest, RootUserLookup) {
+    minimon::ProcReader reader;
+    // UID 0 is universally defined as "root" on UNIX systems
+    std::string root_user = reader.get_username(0);
+    EXPECT_EQ(root_user, "root");
+}
+
+TEST(UserLookupTest, UnknownUidFallback) {
+    minimon::ProcReader reader;
+    // Very high UID that does not correspond to any registered user
+    uid_t non_existent_uid = 9999999;
+    std::string fallback = reader.get_username(non_existent_uid);
+    EXPECT_EQ(fallback, "9999999");
+}
+
+TEST(UserLookupTest, CachingBehavior) {
+    minimon::ProcReader reader;
+    std::string u1 = reader.get_username(0);
+    std::string u2 = reader.get_username(0);
+    EXPECT_EQ(u1, u2);
+    EXPECT_EQ(u1, "root");
+
+    reader.clear_user_cache();
+    std::string u3 = reader.get_username(0);
+    EXPECT_EQ(u3, "root");
+}
+
+TEST(UserLookupTest, StatusIntegration) {
+    std::string fixture_dir = std::string(TEST_FIXTURES_DIR) + "/proc_status_cmdline";
+    minimon::ProcReader reader(fixture_dir);
+
+    // PID 2 in our fixture has Uid: 0, which should resolve to "root"
+    minimon::Process p2;
+    ASSERT_TRUE(reader.read_status(2, p2));
+    EXPECT_EQ(p2.uid, 0u);
+    EXPECT_EQ(p2.user, "root");
+}

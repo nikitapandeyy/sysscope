@@ -4,6 +4,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <pwd.h>
+#include <unistd.h>
 
 namespace minimon {
 
@@ -184,13 +186,45 @@ bool ProcReader::parse_status_stream(std::istream& is, Process& out) {
     return true;
 }
 
+std::string ProcReader::get_username(uid_t uid) const {
+    auto it = user_cache_.find(uid);
+    if (it != user_cache_.end()) {
+        return it->second;
+    }
+
+    std::string username;
+    struct passwd pwd;
+    struct passwd* result = nullptr;
+    char buf[1024];
+
+    // getpwuid_r is the reentrant POSIX call avoiding static buffer races
+    int ret = getpwuid_r(uid, &pwd, buf, sizeof(buf), &result);
+    if (ret == 0 && result != nullptr && result->pw_name != nullptr) {
+        username = result->pw_name;
+    } else {
+        // Fallback to numeric UID string if user not found in /etc/passwd
+        username = std::to_string(uid);
+    }
+
+    user_cache_[uid] = username;
+    return username;
+}
+
+void ProcReader::clear_user_cache() const {
+    user_cache_.clear();
+}
+
 bool ProcReader::read_status(pid_t pid, Process& out) const {
     std::string path = proc_root_ + "/" + std::to_string(pid) + "/status";
     std::ifstream file(path);
     if (!file.is_open()) {
         return false;
     }
-    return parse_status_stream(file, out);
+    bool ok = parse_status_stream(file, out);
+    if (ok) {
+        out.user = get_username(out.uid);
+    }
+    return ok;
 }
 
 std::string ProcReader::parse_cmdline_buffer(const char* buf, size_t length) {

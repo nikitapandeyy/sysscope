@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <sys/types.h>
 #include "process.hpp"
 
@@ -22,6 +23,13 @@ public:
     // Enumerate all active Process IDs by listing all purely numeric
     // subdirectories within the proc root directory.
     [[nodiscard]] std::vector<pid_t> get_pids() const;
+
+    // Resolve a numeric UID to a username string (e.g. 0 -> "root").
+    // Uses POSIX getpwuid_r with an in-memory cache and a numeric fallback.
+    [[nodiscard]] std::string get_username(uid_t uid) const;
+
+    // Clear the username cache.
+    void clear_user_cache() const;
 
     // Read and parse /proc/[pid]/stat into the provided Process object.
     // Returns true on success; returns false if the file cannot be opened
@@ -48,6 +56,7 @@ public:
 
 private:
     std::string proc_root_;
+    mutable std::unordered_map<uid_t, std::string> user_cache_;
 };
 
 } // namespace minimon
