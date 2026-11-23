@@ -25,6 +25,11 @@ add_executable(minimon
 
 target_include_directories(minimon PRIVATE src)
 
+# Milestone 1 experiment executable
+add_executable(read_stat_exp
+    experiments/read_stat_exp.cpp
+)
+
 # Optional testing support (configured in Phase 2)
 option(BUILD_TESTING "Build the testing tree" ON)
 if(BUILD_TESTING)
