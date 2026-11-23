@@ -22,6 +22,7 @@ endif()
 add_library(minimon_core STATIC
     src/process.cpp
     src/proc_reader.cpp
+    src/cpu_tracker.cpp
 )
 target_include_directories(minimon_core PUBLIC src)
 
@@ -55,6 +56,7 @@ if(BUILD_TESTING)
     add_executable(minimon_tests
         tests/test_trivial.cpp
         tests/test_proc_reader.cpp
+        tests/test_cpu_tracker.cpp
     )
     target_link_libraries(minimon_tests PRIVATE
         minimon_core
