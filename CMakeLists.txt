@@ -24,6 +24,7 @@ add_library(minimon_core STATIC
     src/proc_reader.cpp
     src/cpu_tracker.cpp
     src/filter.cpp
+    src/display.cpp
 )
 target_include_directories(minimon_core PUBLIC src)
 
@@ -59,6 +60,7 @@ if(BUILD_TESTING)
         tests/test_proc_reader.cpp
         tests/test_cpu_tracker.cpp
         tests/test_filter.cpp
+        tests/test_display.cpp
     )
     target_link_libraries(minimon_tests PRIVATE
         minimon_core

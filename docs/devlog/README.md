@@ -16,4 +16,5 @@ Engineering log for **Mini Process Monitor (`minimon`)**. Every task is verified
 | [T2.7](010-cpu-tracker.md) | Two-sample CPU tracker & PID reuse detection | 2026-11-23 | `a31f413` | Completed |
 | [T2.8](011-read-all-processes.md) | Unified process listing & vanished process handling | 2026-11-23 | `78dc8c1` | Completed |
 | [T3.1](012-filter-module.md) | Search & filter module with multi-criteria support | 2026-11-23 | `e998334` | Completed |
-| [T3.2](013-sort-module.md) | Sorting module by CPU, memory, PID, and name | 2026-11-23 | `6dcca91` | Completed |
+| [T3.2](013-sort-module.md) | Sorting module by CPU, memory, PID, and name | 2026-11-23 | `cc3eb88` | Completed |
+| [T3.3](014-table-renderer.md) | Terminal table renderer & system summary banner | 2026-11-23 | `de67dac` | Completed |
