@@ -340,6 +340,31 @@ bool ProcReader::read_system_cpu(SystemCpuTimes& out) const {
     return parse_stat_cpu_stream(file, out);
 }
 
+bool ProcReader::read_single_process(pid_t pid, Process& out) const {
+    out.pid = pid;
+
+    // 1. Read /proc/[pid]/stat
+    if (!read_stat(pid, out)) {
+        return false;
+    }
+
+    // 2. Read /proc/[pid]/status
+    if (!read_status(pid, out)) {
+        return false;
+    }
+
+    // 3. Read /proc/[pid]/cmdline
+    static_cast<void>(read_cmdline(pid, out));
+    if (out.cmdline.empty()) {
+        out.cmdline = "[" + out.name + "]";
+    }
+
+    // 4. Resolve username
+    out.user = get_username(out.uid);
+
+    return true;
+}
+
 std::vector<Process> ProcReader::read_all_processes(CpuTracker& cpu_tracker) const {
     std::vector<Process> processes;
     std::vector<pid_t> pids = get_pids();
@@ -353,42 +378,25 @@ std::vector<Process> ProcReader::read_all_processes(CpuTracker& cpu_tracker) con
 
     for (pid_t pid : pids) {
         Process p;
-        p.pid = pid;
-
-        // 1. Read /proc/[pid]/stat
-        // If the process terminated before or during read, stat fails (ENOENT)
-        if (!read_stat(pid, p)) {
+        if (!read_single_process(pid, p)) {
             continue;
         }
 
-        // 2. Read /proc/[pid]/status
-        // If status fails, process likely terminated mid-read
-        if (!read_status(pid, p)) {
-            continue;
-        }
-
-        // 3. Read /proc/[pid]/cmdline
-        // Even if cmdline is empty (kernel thread), read_cmdline returns true
-        static_cast<void>(read_cmdline(pid, p));
-        if (p.cmdline.empty()) {
-            p.cmdline = "[" + p.name + "]";
-        }
-
-        // 4. Calculate memory percent
+        // Calculate memory percent
         if (total_ram_kb > 0 && p.rss_kb > 0) {
             p.mem_percent = (static_cast<double>(p.rss_kb) / static_cast<double>(total_ram_kb)) * 100.0;
         } else {
             p.mem_percent = 0.0;
         }
 
-        // 5. Calculate and update CPU%
+        // Calculate and update CPU%
         cpu_tracker.update_process_cpu(p);
 
         successfully_read_pids.push_back(pid);
         processes.push_back(std::move(p));
     }
 
-    // 6. Prune exited processes from history
+    // Prune exited processes from history
     cpu_tracker.prune_exited(successfully_read_pids);
 
     return processes;

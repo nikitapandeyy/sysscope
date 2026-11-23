@@ -21,3 +21,4 @@ Engineering log for **Mini Process Monitor (`minimon`)**. Every task is verified
 | [T3.4](015-cli-parser.md) | CLI argument parsing & help documentation | 2026-11-23 | `e411178` | Completed |
 | [T3.5](016-live-refresh-mode.md) | Live refresh mode & signal handling | 2026-11-23 | `c1c8342` | Completed |
 | [T3.6](017-json-export.md) | JSON export mode and format documentation | 2026-11-23 | `11917b4` | Completed |
+| [T4.1](018-integration-tests.md) | End-to-end integration testing with real child workloads | 2026-11-23 | `197d12d` | Completed |

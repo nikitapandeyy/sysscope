@@ -56,6 +56,11 @@ if(BUILD_TESTING)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
+    # Child process workload generator for integration tests
+    add_executable(test_workload
+        tests/workload_child.cpp
+    )
+
     add_executable(minimon_tests
         tests/test_trivial.cpp
         tests/test_proc_reader.cpp
@@ -63,7 +68,9 @@ if(BUILD_TESTING)
         tests/test_filter.cpp
         tests/test_display.cpp
         tests/test_cli.cpp
+        tests/test_integration.cpp
     )
+    add_dependencies(minimon_tests test_workload minimon)
     target_link_libraries(minimon_tests PRIVATE
         minimon_core
         GTest::gtest_main
@@ -71,6 +78,8 @@ if(BUILD_TESTING)
     target_include_directories(minimon_tests PRIVATE src)
     target_compile_definitions(minimon_tests PRIVATE
         TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        TEST_WORKLOAD_PATH="$<TARGET_FILE:test_workload>"
+        MINIMON_BIN_PATH="$<TARGET_FILE:minimon>"
     )
 
     include(GoogleTest)
