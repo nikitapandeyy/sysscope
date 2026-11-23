@@ -18,6 +18,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     )
 endif()
 
+# Compiler Sanitizers (AddressSanitizer and UndefinedBehaviorSanitizer)
+option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        message(STATUS "Sanitizers enabled: address, undefined")
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+endif()
+
 # Core library target containing the monitor's modules
 add_library(minimon_core STATIC
     src/process.cpp
