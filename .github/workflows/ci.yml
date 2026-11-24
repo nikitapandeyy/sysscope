@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'phase-*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Ubuntu 22.04 - GCC 11 (Release)"
+            os: ubuntu-22.04
+            cc: gcc
+            cxx: g++
+            build_type: Release
+            sanitizers: OFF
+            valgrind: true
+
+          - name: "Ubuntu 22.04 - Clang 14 (Release)"
+            os: ubuntu-22.04
+            cc: clang
+            cxx: clang++
+            build_type: Release
+            sanitizers: OFF
+            valgrind: false
+
+          - name: "Ubuntu 22.04 - Clang 14 (ASan + UBSan)"
+            os: ubuntu-22.04
+            cc: clang
+            cxx: clang++
+            build_type: Debug
+            sanitizers: ON
+            valgrind: false
+
+          - name: "macOS 13 - AppleClang (Release)"
+            os: macos-13
+            cc: clang
+            cxx: clang++
+            build_type: Release
+            sanitizers: OFF
+            valgrind: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies & Valgrind
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q cmake build-essential valgrind
+
+      - name: Configure CMake
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DENABLE_SANITIZERS=${{ matrix.sanitizers }} \
+            -DBUILD_TESTING=ON
+
+      - name: Build all targets
+        run: |
+          cmake --build build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+      - name: Run automated test suite
+        run: |
+          ctest --test-dir build --output-on-failure
+
+      - name: Run Valgrind memory leak check
+        if: matrix.valgrind == true
+        run: |
+          valgrind --leak-check=full \
+                   --show-leak-kinds=all \
+                   --track-origins=yes \
+                   --error-exitcode=1 \
+                   ./build/minimon --proc-root tests/fixtures/proc_full --once
+
+      - name: Verify live host execution on Linux
+        if: runner.os == 'Linux' && matrix.sanitizers == 'OFF'
+        run: |
+          echo "=== Live minimon --once output ==="
+          ./build/minimon --once --top 10
+          echo "=== Live minimon --json output ==="
+          ./build/minimon --json --top 3
