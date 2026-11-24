@@ -123,6 +123,10 @@ public:
     // Parse aggregate CPU times from /proc/stat stream.
     static bool parse_stat_cpu_stream(std::istream& is, SystemCpuTimes& out);
 
+    // Read full telemetry for a single process (stat, status, cmdline, username).
+    // Returns true on success; false if process does not exist or terminated.
+    [[nodiscard]] bool read_single_process(pid_t pid, Process& out) const;
+
     // Read full telemetry for all active processes in the proc root.
     // Gracefully skips any process that vanishes mid-read (e.g. ENOENT).
     // Computes memory percentage against /proc/meminfo and updates CPU%
