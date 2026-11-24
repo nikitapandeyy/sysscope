@@ -22,4 +22,5 @@ Engineering log for **Mini Process Monitor (`minimon`)**. Every task is verified
 | [T3.5](016-live-refresh-mode.md) | Live refresh mode & signal handling | 2026-11-23 | `c1c8342` | Completed |
 | [T3.6](017-json-export.md) | JSON export mode and format documentation | 2026-11-23 | `11917b4` | Completed |
 | [T4.1](018-integration-tests.md) | End-to-end integration testing with real child workloads | 2026-11-23 | `bf38163` | Completed |
-| [T4.2](019-sanitizers-and-quality.md) | AddressSanitizer, UndefinedBehaviorSanitizer, and Quality Audit | 2026-11-23 | `c2d5758` | Completed |
+| [T4.2](019-sanitizers-and-quality.md) | AddressSanitizer, UndefinedBehaviorSanitizer, and Quality Audit | 2026-11-23 | `964da4d` | Completed |
+| [T4.3](020-gdb-session.md) | GDB debugging session and transcript | 2026-11-23 | `3d45a7a` | Completed |
